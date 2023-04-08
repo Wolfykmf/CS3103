@@ -15,6 +15,11 @@
 
 #define PARAM_ACCESS_SEMAPHORE "/param_access_semaphore_50"
 
+struct thread_data {
+	int thread_id;
+	int num;
+};
+
 long int global_param = 0;
 
 sem_t *semaphores[8];
@@ -26,7 +31,7 @@ pthread_mutex_t mutex;
 * in the child process after the input parameter has been obtained.
 * @parms: The input parameter from the terminal.
 */
-void multi_threads_run(long int input_param);
+void multi_threads_run(long int input_param, char* argv);
 
 void *thread_function(void* arg);
 
@@ -127,7 +132,7 @@ int main(int argc, char **argv)
          * which can be obtained from one of the three variables,
          * i.e., global_param, local_param, shared_param_c[0].
          */
-		multi_threads_run(shared_param_c[0]);
+		multi_threads_run(shared_param_c[0], argv[2]);
 
 		/* each process should "detach" itself from the 
 		   shared memory after it is used */
@@ -192,12 +197,14 @@ int main(int argc, char **argv)
 * in the child process after the input parameter has been obtained.
 * @parms: The input parameter from terminal.
 */
-void multi_threads_run(long int input_param)
+void multi_threads_run(long int input_param, char* argv)
 {
 	// TODO: Implement this function.
 	int j;
 	long int result;
 	int temp;
+	long num;
+	num = strtol(argv, NULL, 10);
 
 	// create 8 semaphores
 	//sem_t *semaphores[8];
@@ -231,19 +238,14 @@ void multi_threads_run(long int input_param)
 
 	// create 8 threads
 	//pthread_t threads[8];
-	int thread_args[8];
 	for (int i = 0; i < 8; i++) {
-		thread_args[i] = i + 1;
-		pthread_create(&threads[i], NULL, thread_function, &thread_args[i]);
-		printf("Child Process: Created thread %d.\n", thread_args[i]);
-		sleep(1);
-	} 
-
-	// wait for threads to finish
-	for (int i = 0; i < 8; i++) {
+		struct thread_data *data = (struct thread_data *)malloc(sizeof(struct thread_data));
+		data->thread_id = i+1;
+		data->num = num;
+		pthread_create(&threads[i], NULL, thread_function, (void *)data);
+		printf("Child Process: Created thread %d.\n", data->thread_id);
 		pthread_join(threads[i], NULL);
-		printf("Child Process: Thread %d has finished.\n", thread_args[i]);
-	}
+	} 
 
 	// find result
 	result = 0;
@@ -267,7 +269,8 @@ void multi_threads_run(long int input_param)
 }
 
 void *thread_function(void* arg) {
-	int thread_id = *((int *) arg);
+	int thread_id = ((struct thread_data *)arg)->thread_id;
+	int num = ((struct thread_data *)arg)->num;
 	int val1, val2;
 
 	printf("Thread %d: Thread %d is running.\n", 1, thread_id);
@@ -280,18 +283,37 @@ void *thread_function(void* arg) {
 
 	pthread_mutex_lock(&mutex);
 
-	sem_getvalue(semaphores[digit1], &val1);
-	sem_getvalue(semaphores[digit2], &val2);
-	printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit1, val1);
-	printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit2, val2);
+	while (num > 0) {
+		//printf("%d", num);
+		sem_getvalue(semaphores[digit1], &val1);
+		sem_getvalue(semaphores[digit2], &val2);
+		printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit1, val1);
+		printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit2, val2);
 
-	sem_post(semaphores[digit1]);
-	sem_post(semaphores[digit2]);
+		//handle the case when the value of the semaphore is 9
+		if (val1 + 1 == 10) {
+			for (int i = 0; i < 9; i++) {
+				sem_wait(semaphores[digit1]);
+			}
+			num--;
+		} else {
+			sem_post(semaphores[digit1]);
+		}
 
-	sem_getvalue(semaphores[digit1], &val1);
-	sem_getvalue(semaphores[digit2], &val2);
-	printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit1, val1);
-	printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit2, val2);
+		if (val2 + 1 == 10) {
+			for (int i = 0; i < 9; i++) {
+				sem_wait(semaphores[digit2]);
+			}
+			num--;
+		} else {
+			sem_post(semaphores[digit2]);
+		}
+
+		sem_getvalue(semaphores[digit1], &val1);
+		sem_getvalue(semaphores[digit2], &val2);
+		printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit1, val1);
+		printf("Thread %d: Thread %d got semaphore %d with value %d.\n", 1, thread_id, digit2, val2);
+	}
 
 	pthread_mutex_unlock(&mutex);
 
